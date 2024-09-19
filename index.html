@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>CS 4731 Final Project Part I</title>
+
+    <script id="vshader" type="x-shader/x-vertex">
+        attribute vec4 aPosition;
+        attribute vec3 aNormal;
+        attribute vec2 aTexCoord;
+        attribute vec4 aDiffuse;
+        attribute vec4 aSpecular;
+
+        uniform vec4 uLightPosition;
+        uniform mat4 uProjMatrix, uCameraMatrix, uViewMatrix, uWorldMatrix, uModelMatrix;
+
+        varying vec3 L, N, V;
+        varying vec2 textureCoordinates;
+        varying vec3 skyBoxCoordinates, reflectionVector, refractionVector, viewerDirection;
+        varying vec4 vDiffuse, vSpecular;
+
+        void main() {
+            mat4 combMatrix = uProjMatrix * uCameraMatrix * uViewMatrix;
+            
+            textureCoordinates = aTexCoord;
+            skyBoxCoordinates = aPosition.xyz;
+
+            L = normalize((uLightPosition - aPosition).xyz);
+            N = normalize(combMatrix * aPosition).xyz;
+            V = normalize(-aNormal);
+
+            vDiffuse = aDiffuse;
+            vSpecular = aSpecular;
+
+            vec4 position = combMatrix * vec4(aNormal, 1.0);
+            vec3 normal = normalize(mat3(uCameraMatrix * uProjMatrix) * aPosition.xyz);
+
+            vec3 incident_direction = normalize(position.xyz);
+            reflectionVector = reflect(incident_direction, normal);
+            refractionVector = refract(incident_direction, normal, 0.1);
+            viewerDirection = normalize(-position.xyz);
+
+            gl_Position = combMatrix * uModelMatrix * aPosition;
+        }
+    </script>
+
+    <script id="fshader" type="x-shader/x-fragment">
+        precision mediump float;
+
+        varying vec2 textureCoordinates;
+        uniform sampler2D stopSignTexture;
+
+        varying vec3 skyBoxCoordinates;
+        uniform samplerCube skyBoxTexture;
+
+        uniform vec4 ambientProduct, diffuseProduct, specularProduct;
+        uniform float shininess;
+        uniform int textureType;
+
+        varying vec3 L, N, V;
+        varying vec3 reflectionVector, refractionVector, viewerDirection;
+        varying vec4 vDiffuse, vSpecular;
+
+        const vec4 shadowIntensity = vec4(0, 0, 0, 0.80);
+
+        void main() {
+            vec3 R = (2.0 * dot(L, N) * N) - L;
+            vec4 diffuse = diffuseProduct * dot(L, N);
+            vec4 specular = specularProduct * pow(max(dot(V, R), 0.0), shininess);
+            vec4 fColor = vec4((diffuse + specular + ambientProduct).xyz, 1.0) ;
+
+            vec4 textured = texture2D(stopSignTexture, textureCoordinates);
+            vec4 untextured = fColor * vDiffuse + (vSpecular * specular);
+            vec4 skybox = textureCube(skyBoxTexture, skyBoxCoordinates);
+            vec3 reflect_color = textureCube(skyBoxTexture, reflect(reflectionVector, viewerDirection)).rgb;
+            vec3 refract_color = textureCube(skyBoxTexture, refract(refractionVector, viewerDirection, 1.0)).rgb;
+
+            if (textureType == 0) {
+                gl_FragColor = fColor * textured;
+            } else if (textureType == 1) {
+                gl_FragColor = untextured;
+            } else if (textureType == 2) {
+                gl_FragColor = fColor * skybox;
+            } else if (textureType == 3) {
+                gl_FragColor = shadowIntensity;
+            } else if (textureType == 4) {
+                gl_FragColor.rgb = mix(reflect_color, untextured.rgb, 0.25);
+                gl_FragColor.a = 1.0;
+            } else if (textureType == 5) {
+                gl_FragColor.rgb = mix(refract_color, untextured.rgb, 0.1);
+                gl_FragColor.a = 1.0;
+            }
+        }
+    </script>
+
+    <script type="text/javascript" src="lib/webgl-utils.js"></script>
+    <script type="text/javascript" src="lib/initShaders.js"></script>
+    <script type="text/javascript" src="lib/MV.js"></script>
+    <script type="text/javascript" src="lib/model.js"></script>
+    <script type="text/javascript" src="lib/face.js"></script>
+    <script type="text/javascript" src="main.js"></script>
+</head>
+<body onload="main()">
+    <div style="text-align: center">
+        <h1 id="mode">CS 4731 Final Project</h1>
+        <canvas id="webgl" class="box" width="1600" height="900">
+            Please use a browser that supports the "canvas" tag.
+        </canvas>
+    </div>
+</body>
+</html>
